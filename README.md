@@ -13,9 +13,9 @@ A simple, secure smart contract for ETH ↔ DRB swaps on Base network with autom
 
 ## Contract Address
 
-**Base Network:** `0x6682d097dbCBce875708D99e7AF3eE682CD064f7`
+**Base Network:** `0x9f9F0D27b0471774232df0A15Fa39247E758322F`
 
-[View on BaseScan](https://basescan.org/address/0x6682d097dbCBce875708D99e7AF3eE682CD064f7)
+[View on BaseScan](https://basescan.org/address/0x9f9F0D27b0471774232df0A15Fa39247E758322F)
 
 ## Contract Details
 

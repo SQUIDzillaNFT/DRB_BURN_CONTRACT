@@ -27,7 +27,7 @@ The contract is responsible for:
 ## Contract Addresses (Base Network)
 
 ```typescript
-const CONTRACT_ADDRESS = "0x6682d097dbCBce875708D99e7AF3eE682CD064f7"; // Your deployed contract
+const CONTRACT_ADDRESS = "0x9f9F0D27b0471774232df0A15Fa39247E758322F"; // Your deployed contract
 const DRB_TOKEN = "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2";
 const WETH_ADDRESS = "0x4200000000000000000000000000000000000006";
 const UNISWAP_V3_QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a";
@@ -602,8 +602,8 @@ Sell DRB:
 
 - **Uniswap V3 Quoter:** https://docs.uniswap.org/contracts/v3/reference/periphery/lens/QuoterV2
 - **Base Network:** https://docs.base.org/
-- **Contract Address:** `0x6682d097dbCBce875708D99e7AF3eE682CD064f7`
-- **BaseScan:** https://basescan.org/address/0x6682d097dbCBce875708D99e7AF3eE682CD064f7
+- **Contract Address:** `0x9f9F0D27b0471774232df0A15Fa39247E758322F`
+- **BaseScan:** https://basescan.org/address/0x9f9F0D27b0471774232df0A15Fa39247E758322F
 
 ---
 
