@@ -9,11 +9,12 @@
 ## Overview
 
 The frontend is responsible for:
-1. ✅ **Getting price quotes** from Uniswap
-2. ✅ **Calculating slippage protection** (minDRB/minETH)
-3. ✅ **Handling token approvals** (for selling DRB)
-4. ✅ **Calling contract functions** with correct parameters
-5. ✅ **Displaying fees and estimates** to users
+1. ✅ **Checking contract state** (paused status)
+2. ✅ **Getting price quotes** from Uniswap
+3. ✅ **Calculating slippage protection** (minDRB/minETH)
+4. ✅ **Handling token approvals** (for selling DRB)
+5. ✅ **Calling contract functions** with correct parameters
+6. ✅ **Displaying fees and estimates** to users
 
 The contract is responsible for:
 - ✅ Executing swaps via Uniswap Router
@@ -304,6 +305,47 @@ const CONTRACT_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [],
+    name: 'paused',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'checkUserApproval',
+    outputs: [
+      { name: 'allowance', type: 'uint256' },
+      { name: 'userBalance', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'drbAmount', type: 'uint256' }],
+    name: 'estimateSellFees',
+    outputs: [
+      { name: 'burnAmount', type: 'uint256' },
+      { name: 'creatorAmount', type: 'uint256' },
+      { name: 'swapAmount', type: 'uint256' },
+      { name: 'totalFeeAmount', type: 'uint256' },
+    ],
+    stateMutability: 'pure',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'estimatedDRB', type: 'uint256' }],
+    name: 'estimateBuyFees',
+    outputs: [
+      { name: 'burnAmount', type: 'uint256' },
+      { name: 'creatorAmount', type: 'uint256' },
+      { name: 'netDRB', type: 'uint256' },
+      { name: 'totalFeeAmount', type: 'uint256' },
+    ],
+    stateMutability: 'pure',
+    type: 'function',
+  },
 ] as const;
 ```
 
@@ -356,6 +398,105 @@ const CONTRACT_ABI = [
 
 ---
 
+## Contract State Checks
+
+### Check if Contract is Paused
+
+**Always check if contract is paused before allowing swaps:**
+
+```typescript
+// Check pause status before any swap
+const isPaused = await readContract({
+  address: CONTRACT_ADDRESS,
+  abi: CONTRACT_ABI,
+  functionName: 'paused',
+});
+
+if (isPaused) {
+  // Show message to user
+  alert('Swaps are currently paused. Please try again later.');
+  return;
+}
+```
+
+**Recommended:** Check pause status when component mounts and disable swap buttons if paused.
+
+---
+
+## Diagnostic Functions
+
+### Check User's DRB Approval
+
+**Use this to check user's approval status before selling:**
+
+```typescript
+async function checkUserApprovalStatus(userAddress: string) {
+  const result = await readContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'checkUserApproval',
+    args: [userAddress],
+  });
+  
+  const [allowance, userBalance] = result;
+  
+  return {
+    allowance: allowance,
+    userBalance: userBalance,
+    needsApproval: allowance === 0n,
+  };
+}
+```
+
+**Use Case:** Display approval status in UI, show warning if no approval set.
+
+### Estimate Fees
+
+**Use these functions to show fee breakdown to users:**
+
+```typescript
+// For buy flow: Estimate fees based on Uniswap quote
+async function estimateBuyFees(grossDRB: bigint) {
+  const [burnAmount, creatorAmount, netDRB, totalFeeAmount] = await readContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'estimateBuyFees',
+    args: [grossDRB], // Pass the DRB amount from Uniswap quote
+  });
+  
+  return {
+    burnAmount,
+    creatorAmount,
+    netDRB, // What user will actually receive
+    totalFeeAmount,
+  };
+}
+
+// For sell flow: Estimate fees based on user input
+async function estimateSellFees(drbAmount: bigint) {
+  const [burnAmount, creatorAmount, swapAmount, totalFeeAmount] = await readContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'estimateSellFees',
+    args: [drbAmount], // Pass the full DRB amount user wants to sell
+  });
+  
+  return {
+    burnAmount,
+    creatorAmount,
+    swapAmount, // Amount that will be swapped (after fees)
+    totalFeeAmount,
+  };
+}
+```
+
+**Use Case:** Display fee breakdown in UI:
+- "0.25% burned (X DRB)"
+- "0.25% creator fee (Y DRB)"
+- "You'll receive Z DRB/ETH after fees"
+
+---
+
 ## Error Handling
 
 ### Common Errors
@@ -372,6 +513,10 @@ const CONTRACT_ABI = [
 - **Cause:** User entered 0 amount
 - **Fix:** Validate input before calling contract
 
+**"Paused"**
+- **Cause:** Contract is paused by owner
+- **Fix:** Show message to user, disable swap buttons until unpaused
+
 **"execution reverted"**
 - **Cause:** Various (check transaction on BaseScan)
 - **Fix:** Check transaction receipt for specific error
@@ -380,26 +525,34 @@ const CONTRACT_ABI = [
 
 ## User Experience Recommendations
 
-1. **Show Fee Breakdown:**
+1. **Check Contract State:**
+   - Check `paused` status on component mount
+   - Disable swap buttons if paused
+   - Show clear message if contract is paused
+
+2. **Show Fee Breakdown:**
+   - Use `estimateBuyFees()` or `estimateSellFees()` to get exact fee amounts
    - Display 0.25% burn + 0.25% creator fee clearly
    - Show expected output after fees
 
-2. **Slippage Settings:**
+3. **Slippage Settings:**
    - Default: 2% (200 basis points)
    - Allow users to adjust (0.1% - 5% recommended)
    - Warn if slippage is too high or too low
 
-3. **Approval Flow:**
-   - Auto-check allowance before sell
+4. **Approval Flow:**
+   - Use `checkUserApproval()` to check allowance before sell
+   - Show approval status in UI
    - Show approval transaction separately
    - Consider unlimited approval (MaxUint256) for better UX
 
-4. **Loading States:**
+5. **Loading States:**
    - Show "Getting quote..." while fetching
+   - Show "Checking approval..." while checking
    - Show "Approving..." during approval
    - Show "Swapping..." during swap transaction
 
-5. **Success Feedback:**
+6. **Success Feedback:**
    - Display transaction hash
    - Show amount received
    - Show fees burned/collected
@@ -408,10 +561,13 @@ const CONTRACT_ABI = [
 
 ## Testing Checklist
 
+- [ ] Contract pause check works (disable buttons when paused)
 - [ ] Buy flow works with small amounts (0.001 ETH)
 - [ ] Buy flow works with large amounts (1+ ETH)
-- [ ] Sell flow checks allowance correctly
+- [ ] Sell flow checks allowance correctly (using checkUserApproval)
 - [ ] Sell flow approves and swaps correctly
+- [ ] Fee estimation functions work (estimateBuyFees, estimateSellFees)
+- [ ] Fee breakdown displays correctly
 - [ ] Slippage protection works (try with 0% vs 2%)
 - [ ] Error messages are user-friendly
 - [ ] Quotes update when amount changes
@@ -424,18 +580,20 @@ const CONTRACT_ABI = [
 
 ```
 Buy DRB:
-1. User enters: "0.1 ETH"
-2. Frontend shows: "You'll receive ~X DRB (after 0.5% fees)"
-3. User clicks "Buy"
-4. Frontend: Get quote → Calculate minDRB → Call buyDRB()
-5. Transaction confirms → Show success
+1. Frontend checks: Contract paused? (if yes, disable button)
+2. User enters: "0.1 ETH"
+3. Frontend shows: "You'll receive ~X DRB (after 0.5% fees)"
+4. User clicks "Buy"
+5. Frontend: Get quote → Calculate minDRB → Call buyDRB()
+6. Transaction confirms → Show success
 
 Sell DRB:
-1. User enters: "1000 DRB"
-2. Frontend shows: "You'll receive ~X ETH (after 0.5% fees)"
-3. User clicks "Sell"
-4. Frontend: Check allowance → Approve if needed → Get quote → Calculate minETH → Call sellDRB()
-5. Transaction confirms → Show success
+1. Frontend checks: Contract paused? (if yes, disable button)
+2. User enters: "1000 DRB"
+3. Frontend shows: "You'll receive ~X ETH (after 0.5% fees)"
+4. User clicks "Sell"
+5. Frontend: Check approval (checkUserApproval) → Approve if needed → Get quote → Calculate minETH → Call sellDRB()
+6. Transaction confirms → Show success
 ```
 
 ---
@@ -450,4 +608,5 @@ Sell DRB:
 ---
 
 **Last Updated:** Current  
-**Contract Version:** Final Production
+**Contract Version:** Final Production  
+**New Features:** Emergency pause, diagnostic functions (checkUserApproval, estimateFees)
