@@ -62,19 +62,52 @@ contract DRBSwapRouter is ReentrancyGuard, Ownable {
     uint256 public constant BURN_RATE = 25; // 0.25%
     uint256 public constant CREATOR_RATE = 25; // 0.25%
     uint256 public constant DENOM = 10000;
+    
+    // Emergency pause mechanism
+    bool public paused;
 
     event Swap(address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, uint256 burned, uint256 creatorFee);
     event Burn(address indexed token, uint256 amount);
     event CreatorFee(address indexed token, uint256 amount);
     event CreatorWalletUpdated(address indexed oldWallet, address indexed newWallet);
+    event Paused(address indexed account);
+    event Unpaused(address indexed account);
 
     constructor() Ownable(0xAdEf887a75B32c7655692DB69A19108aFC1B91a7) {
         creatorWallet = 0x2d2eB3Ab43A5C33223376a20013D838a83d33155;
+        paused = false;
         
         // Pre-approve Uniswap Router for unlimited WETH and DRB
         // This avoids needing approval on every swap, saving gas
         IERC20(WETH).approve(ROUTER, type(uint256).max);
         IERC20(DRB).approve(ROUTER, type(uint256).max);
+    }
+    
+    /**
+     * @notice Modifier to check if contract is paused
+     */
+    modifier whenNotPaused() {
+        require(!paused, "Paused");
+        _;
+    }
+    
+    /**
+     * @notice Pause all swaps (owner only)
+     * @dev Allows owner to stop swaps if critical issue found
+     */
+    function pause() external onlyOwner {
+        require(!paused, "Already paused");
+        paused = true;
+        emit Paused(msg.sender);
+    }
+    
+    /**
+     * @notice Unpause all swaps (owner only)
+     */
+    function unpause() external onlyOwner {
+        require(paused, "Not paused");
+        paused = false;
+        emit Unpaused(msg.sender);
     }
 
     /**
@@ -130,12 +163,66 @@ contract DRBSwapRouter is ReentrancyGuard, Ownable {
         // Check contract WETH balance
         contractWethBalance = IERC20(WETH).balanceOf(address(this));
     }
+    
+    /**
+     * @notice Check user's DRB approval to this contract
+     * @param user User address to check
+     * @return allowance Current DRB allowance from user to this contract
+     * @return userBalance User's current DRB balance
+     */
+    function checkUserApproval(address user) external view returns (
+        uint256 allowance,
+        uint256 userBalance
+    ) {
+        allowance = IERC20(DRB).allowance(user, address(this));
+        userBalance = IERC20(DRB).balanceOf(user);
+    }
+    
+    /**
+     * @notice Estimate fees for selling DRB (for buy, use Uniswap quote first)
+     * @param drbAmount Amount of DRB to sell
+     * @return burnAmount Amount that will be burned (0.25%)
+     * @return creatorAmount Amount that will go to creator (0.25%)
+     * @return swapAmount Amount that will be swapped (after fees)
+     * @return totalFeeAmount Total fee amount (0.5%)
+     */
+    function estimateSellFees(uint256 drbAmount) external pure returns (
+        uint256 burnAmount,
+        uint256 creatorAmount,
+        uint256 swapAmount,
+        uint256 totalFeeAmount
+    ) {
+        burnAmount = (drbAmount * BURN_RATE) / DENOM;
+        creatorAmount = (drbAmount * CREATOR_RATE) / DENOM;
+        totalFeeAmount = burnAmount + creatorAmount;
+        swapAmount = drbAmount - totalFeeAmount;
+    }
+    
+    /**
+     * @notice Estimate fees for buying (must pass estimated DRB from Uniswap quote)
+     * @param estimatedDRB Estimated DRB that will be received from Uniswap (before contract fees)
+     * @return burnAmount Amount that will be burned (0.25%)
+     * @return creatorAmount Amount that will go to creator (0.25%)
+     * @return netDRB Amount user will receive (after fees)
+     * @return totalFeeAmount Total fee amount (0.5%)
+     */
+    function estimateBuyFees(uint256 estimatedDRB) external pure returns (
+        uint256 burnAmount,
+        uint256 creatorAmount,
+        uint256 netDRB,
+        uint256 totalFeeAmount
+    ) {
+        burnAmount = (estimatedDRB * BURN_RATE) / DENOM;
+        creatorAmount = (estimatedDRB * CREATOR_RATE) / DENOM;
+        totalFeeAmount = burnAmount + creatorAmount;
+        netDRB = estimatedDRB - totalFeeAmount;
+    }
 
     /**
      * @notice Buy DRB with ETH - Simple atomic swap
      * @param minDRB Minimum DRB tokens you want to receive (after fees)
      */
-    function buyDRB(uint256 minDRB) external payable nonReentrant returns (uint256 drbReceived) {
+    function buyDRB(uint256 minDRB) external payable nonReentrant whenNotPaused returns (uint256 drbReceived) {
         require(msg.value > 0, "Need ETH");
         
         // Wrap ETH to WETH first (contract needs WETH to swap)
@@ -200,7 +287,7 @@ contract DRBSwapRouter is ReentrancyGuard, Ownable {
      * @param drbAmount Amount of DRB to sell
      * @param minETH Minimum ETH you want to receive (after fees)
      */
-    function sellDRB(uint256 drbAmount, uint256 minETH) external nonReentrant returns (uint256 ethReceived) {
+    function sellDRB(uint256 drbAmount, uint256 minETH) external nonReentrant whenNotPaused returns (uint256 ethReceived) {
         require(drbAmount > 0, "Need DRB");
         
         // Transfer DRB from user
