@@ -405,7 +405,8 @@ The contract is **ready for deployment** with the following notes:
 
 ## Signatures
 
-**Contract Hash:** (To be calculated after deployment)  
+**Contract Address:** `0x9f9F0D27b0471774232df0A15Fa39247E758322F`  
+**Deployment Transaction:** [`0x00db40fa25d837f8b1e42b1c54f4a914dae5f7426b1802920e3db618cf3d196d`](https://basescan.org/tx/0x00db40fa25d837f8b1e42b1c54f4a914dae5f7426b1802920e3db618cf3d196d)  
 **Compiler Version:** Solidity 0.8.20+  
 **License:** MIT
 
